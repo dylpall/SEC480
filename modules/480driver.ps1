@@ -24,13 +24,13 @@ $selectedVM = Select-VM  #-folder $conf.vm_folder
 #Write-Host 'Full Clone Created.'
 
 # Get ip address
-#Get-IP -VM $selectedVM
+Get-IP -VM $selectedVM
 
 # create new network adapter
 #New-Network -SwitchName "BLUE23-LAN" -PortGroupName "BLUE23-LAN"
 
 # set network adapter to vm
-Set-Network -VMName $selectedVM.Name -AdapterName "Network adapter 1" -NewNetworkName "BLUE23-LAN"
+#Set-Network -VMName $selectedVM.Name -AdapterName "Network adapter 1" -NewNetworkName "BLUE23-LAN"
 
 # power on vm
 #Start-MyVM -VMName $selectedVM.Name
