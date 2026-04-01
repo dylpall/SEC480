@@ -1,4 +1,4 @@
-#post provisioning of vyos//implementing dhcp 
+# dhcp
 - name: vyos network config
   hosts: vyos
   tasks:
