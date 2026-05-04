@@ -1,84 +1,84 @@
-- name: Rocky Post-Provisioning  # The name of the playbook that will appear in the CLI when the script is run.
-  hosts: all                      # Defines which hosts from the inventory file to run this against. In this case, it's all of them.
-  become: yes                     # Escalates the Ansible user over SSH to sudo privileges for all upcoming tasks.
-  tasks:                          # This is where we begin to define tasks. Each task is its own "unit" with unique instructions and variables.
+- name: Rocky Post-Provisioning
+  hosts: all                      
+  become: yes                     
+  tasks:                          
 
-  - name: .ssh directory exists   # The name of the task that will appear on the CLI.
-    file:                         # The "file" module is used to manage objects in the filesystem.
-      path: "/home/{{ ansible_user }}/.ssh"  # This is the directory path the Ansible task targets. "ansible_user" is from the inventory file.
-      state: directory            # Checks to make sure the path is a directory.
-      mode: 0700                  # Ensures that the user can read/write/execute.
-      owner: "{{ ansible_user }}" # The owner of the directory is set to the "ansible_user" variable of "admin."
-      group: "{{ ansible_user }}" # The group of the directory is set to the "ansible_user" variable of "admin."
+  - name: .ssh directory exists   
+    file:                         
+      path: "/home/{{ ansible_user }}/.ssh"  
+      state: directory            
+      mode: 0700                 
+      owner: "{{ ansible_user }}" 
+      group: "{{ ansible_user }}" 
 
-  - name: authorized_keys exists  # This task ensures that the key for SSH login exists.
+  - name: authorized_keys exists  
     file:
-      path: "/home/{{ ansible_user }}/.ssh/authorized_keys"  # The path is created using "touch" if it does not already exist.
+      path: "/home/{{ ansible_user }}/.ssh/authorized_keys"  
       state: touch
-      mode: 0644                  # Setting permissions accordingly.
+      mode: 0644                  
       owner: "{{ ansible_user }}"
       group: "{{ ansible_user }}"
 
-  - name: Add admin public key    # This task ensures that the admin user has the public key.
-    blockinfile:                  # The blockinfile module inserts a block of text into a file.
-      dest: "/home/{{ ansible_user }}/.ssh/authorized_keys"  # "dest" is the file we want to insert text into.
-      block: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"     # Looks up the public key on the Ansible controller (management VM).
-      owner: "{{ ansible_user }}"  # Checks permissions and changes if needed.
+  - name: Add admin public key    
+    blockinfile:                  
+      dest: "/home/{{ ansible_user }}/.ssh/authorized_keys"  
+      block: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"     
+      owner: "{{ ansible_user }}"  
       group: "{{ ansible_user }}"
       mode: 0644
 
-  - name: wheel group             # Ensures that the "admin" user is a part of the wheel group on the target VM.
-    user:                         # The "user" module is used to modify user accounts.
-      name: "{{ ansible_user }}"  # This adds the variable "ansible_user," aka "admin," to the wheel user group (Rocky uses wheel, not sudo).
+  - name: wheel group             
+    user:                         
+      name: "{{ ansible_user }}"  
       groups: wheel
-      append: yes                 # "append" is important because it adds to the specified group rather than overwriting it.
+      append: yes                 
 
-  - name: passwordless sudo for admin  # Ensures that the admin user can escalate to sudo without entering their password again.
-    copy:                         # The "copy" module is used to write to the specified file.
-      dest: /etc/sudoers.d/admin  # The "dest:" line is the target file.
-      content: "admin ALL=(ALL) NOPASSWD:ALL\n"  # The "content" line is what will be written to the file.
-      mode: 0440                  # Permissions: read only to the file owner and group; others have no access.
+  - name: passwordless sudo for admin  
+    copy:                         
+      dest: /etc/sudoers.d/admin  
+      content: "admin ALL=(ALL) NOPASSWD:ALL\n" 
+      mode: 0440                  
 
-  - name: hostname                # Uses the hostname module to set the system hostname.
+  - name: hostname                
     hostname:
-      name: "{{ hostname }}"      # Sets the system hostname based on inventory variable "hostname".
+      name: "{{ hostname }}"      
 
-  - name: add hostname to /etc/hosts  # Adds the hostname to /etc/hosts.
-    lineinfile:                   # The lineinfile module ensures a specific line exists.
-      path: /etc/hosts            # This is the file path it is checking.
-      line: "127.0.1.1 {{ hostname }}"  # Ensures the line exists. If it does not, it will add it.
+  - name: add hostname to /etc/hosts  
+    lineinfile:                   
+      path: /etc/hosts            
+      line: "127.0.1.1 {{ hostname }}" 
 
-  - name: remove default NM connection  # Removes any existing NetworkManager profile for the interface.
+  - name: remove default NM connection
     file:
       path: "/etc/NetworkManager/system-connections/{{ device }}.nmconnection"
-      state: absent                # The state "absent" checks that the file is gone -- if it is not, it is deleted.
+      state: absent               
 
-  - name: create new NM connection  # Creates a new NetworkManager keyfile (Rocky uses NetworkManager, not netplan).
-    copy:                           # Using the copy module that we saw in a previous task.
-      dest: "/etc/NetworkManager/system-connections/{{ device }}.nmconnection"  # The destination path for the new connection profile.
-      mode: 0600                    # Read/Write only to root -- NetworkManager refuses keyfiles with looser perms.
+  - name: create new NM connection  
+    copy:                           
+      dest: "/etc/NetworkManager/system-connections/{{ device }}.nmconnection"  
+      mode: 0600                    
       owner: root
       group: root
-      content: |                    # "content:" is used to indicate what should be added to the file.
-        [connection]                # Keyfile format -- INI-style sections instead of YAML.
+      content: |                    
+        [connection]
         id={{ device }}
         type=ethernet
-        interface-name={{ device }} # Pulls "device" from the inventory file.
+        interface-name={{ device }}
         autoconnect=true
 
         [ipv4]
-        method=manual               # Static addressing instead of DHCP.
-        addresses={{ lan_ip }}/24   # Uses "lan_ip" from the inventory file.
-        gateway={{ gateway }}       # Uses "gateway" from the inventory file.
-        dns={{ name_server }};{{ gateway }};  # DNS entries are semicolon-separated AND semicolon-terminated.
+        method=manual
+        addresses={{ lan_ip }}/24
+        gateway={{ gateway }}
+        dns={{ name_server }};{{ gateway }};
 
         [ipv6]
         method=disabled
 
-  - name: reload NM connections   # Tells NetworkManager to re-read the keyfile and bring the interface up.
+  - name: reload NM connections
     shell: "nmcli connection reload && nmcli connection up {{ device }}"
 
-  - name: Reboot to apply network changes  # Reboots the VM to apply network changes.
-    shell: "sleep 5 && shutdown -r now"    # The "shell" module executes commands like in the CLI; here it reboots after a delay.
-    async: 1                               # Runs the command asynchronously so Ansible doesn't wait for the reboot to finish.
+  - name: Reboot to apply network changes
+    shell: "sleep 5 && shutdown -r now"
+    async: 1
     poll: 0
